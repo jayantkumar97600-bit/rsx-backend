@@ -25,19 +25,16 @@ app.use(
 // --- fail-fast: ensure MONGO_URI exists in env ---
 const MONGO_URI = process.env.MONGO_URI;
 if (!MONGO_URI) {
-  console.error(
-    "FATAL: MONGO_URI is missing. Set MONGO_URI in environment variables and restart."
-  );
-  // exit so Railway shows clear failure logs (do not continue with localhost fallback)
+  console.error("FATAL: MONGO_URI is missing. Add MONGO_URI in env and restart.");
   process.exit(1);
 }
 
-// Connect mongoose using MONGO_URI from env
+// Mask print (safe)
+const masked = MONGO_URI.replace(/(\/\/.+?:).+?@/, "$1***@");
+console.log("Connecting to MongoDB (masked):", masked);
+
 mongoose
-  .connect(MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  .connect(MONGO_URI) // <-- no useNewUrlParser / useUnifiedTopology here
   .then(() => console.log("✅ MongoDB Connected"))
   .catch((err) => {
     console.error("❌ MongoDB connection error:", err);
