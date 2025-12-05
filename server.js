@@ -1,88 +1,112 @@
-// server.js - production-ready, graceful shutdown, uses env vars
-require('dotenv').config();
+// server.js - RSX WINGOD backend (clean & production-friendly)
 
-const express = require('express');
-const cors = require('cors');
-const mongoose = require('mongoose');
+require("dotenv").config();
+
+const express = require("express");
+let morgan;
+try {
+  morgan = require("morgan");
+} catch (e) {
+  // morgan missing -> it's optional (avoid crash on platforms where devDependencies aren't installed)
+  morgan = null;
+}
+
+const cors = require("cors");
+const mongoose = require("mongoose");
+const path = require("path");
+
+// Route imports (ensure these files exist and export routers)
+const authRoutes = require("./routes/auth");
+const paymentRoutes = require("./routes/payments");
+const gameRoutes = require("./routes/game");
+const walletRoutes = require("./routes/wallet");
+const referralRoutes = require("./routes/referral");
 
 const app = express();
+
+// Middleware
 app.use(cors());
 app.use(express.json());
+if (morgan) app.use(morgan("tiny"));
 
-// --- Basic logger to replace morgan so builds won't fail if morgan not installed
-function log(...args) { console.log(new Date().toISOString(), ...args); }
+// Basic healthcheck (use this path in Railway healthcheck)
+app.get("/healthz", (req, res) => res.status(200).json({ ok: true, time: new Date().toISOString() }));
 
-// --- Routes (example)
-app.get('/', (req, res) => res.json({ message: 'API is running' }));
-app.get('/health', (req, res) => res.json({ ok: true }));
+// Routes
+app.use("/api/auth", authRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/game", gameRoutes);
+app.use("/api/wallet", walletRoutes);
+app.use("/api/referral", referralRoutes);
 
+// If you later serve frontend from same server:
+// app.use(express.static(path.join(__dirname, "public")));
+// app.get("*", (req,res) => res.sendFile(path.join(__dirname,"public","index.html")));
 
-// import your routes if present (make sure files exist)
-// const authRoutes = require('./routes/auth');
-// app.use('/api/auth', authRoutes);
+const PORT = Number(process.env.PORT || 5000);
 
-// --- Mongo connection
-const MONGO_URI = process.env.MONGO_URI || process.env.DATABASE_URL || 'mongodb://127.0.0.1:27017/godwin';
-async function connectMongo() {
+// MONGO URI from env (set this in Railway / host env vars)
+const MONGO_URI = process.env.MONGO_URI || process.env.DATABASE_URL || "mongodb://127.0.0.1:27017/rsxwingod";
+
+let server = null;
+
+// Connect to Mongo and start server
+async function start() {
   try {
-    log('Connecting to MongoDB:', MONGO_URI.startsWith('mongodb+srv') ? 'atlas uri (masked)' : MONGO_URI);
-    await mongoose.connect(MONGO_URI, {
-      // modern driver options - mongoose v? handles these internally; keep simple
-      // useUnifiedTopology/useNewUrlParser no longer required for modern drivers
+    console.log(`Connecting to MongoDB: ${MONGO_URI.includes("mongodb+srv") ? "atlas uri (masked)" : MONGO_URI}`);
+    await mongoose.connect(MONGO_URI /* no deprecated options here */);
+    console.log("✅ MongoDB Connected");
+
+    server = app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
     });
-    log('✅ MongoDB Connected');
+
+    // If the platform sends SIGTERM, we gracefully close
+    setupGracefulShutdown();
   } catch (err) {
-    log('❌ MongoDB connection error:', err.message || err);
-    // DON'T call process.exit here; let service retry and platform decide restart
+    console.error("❌ MongoDB connection error:", err);
+    // Do not force process.exit here — let platform attempt restart and logs show the error.
+    // If you want to exit after repeated failures, implement backoff here.
   }
 }
-connectMongo();
 
-// --- Start server
-const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
-  log(`🚀 Server running on port ${PORT}`);
-});
-
-// --- Graceful shutdown
-let shuttingDown = false;
-async function shutdown(signal) {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  log(`⚠️  Received ${signal}. Shutting down gracefully...`);
-  try {
-    // stop accepting new connections
-    server.close(() => {
-      log('HTTP server closed.');
-    });
-
-    // close mongoose
+function setupGracefulShutdown() {
+  const graceful = async (signal) => {
     try {
-      await mongoose.disconnect();
-      log('Mongo connection closed.');
+      console.log(`⚠️  Received ${signal}. Shutting down gracefully...`);
+      if (server) {
+        await new Promise((resolve) => server.close(resolve));
+        console.log("HTTP server closed.");
+      }
+      // Close mongoose connection
+      try {
+        await mongoose.connection.close(false);
+        console.log("Mongo connection closed.");
+      } catch (e) {
+        console.warn("Error closing Mongo connection:", e);
+      }
     } catch (e) {
-      log('Error while closing mongo:', e && e.message ? e.message : e);
-    }
-
-    // allow a short time to finish
-    setTimeout(() => {
-      log('Exiting process after graceful shutdown.');
-      // use process.exit with 0 only after cleanup — platform will restart if needed
+      console.error("Error during graceful shutdown:", e);
+    } finally {
+      // Exit with 0 so platform knows it was graceful (use non-zero on unexpected failure)
       process.exit(0);
-    }, 1000);
-  } catch (err) {
-    log('Error during shutdown:', err);
-    process.exit(1);
-  }
+    }
+  };
+
+  // Hook into the standard signals
+  process.on("SIGTERM", () => graceful("SIGTERM"));
+  process.on("SIGINT", () => graceful("SIGINT"));
+
+  // Catch unhandled promises so we can log (optional)
+  process.on("unhandledRejection", (reason, p) => {
+    console.error("Unhandled Rejection at: Promise", p, "reason:", reason);
+    // don't exit immediately; platform/logic can decide
+  });
+  process.on("uncaughtException", (err) => {
+    console.error("Uncaught Exception:", err);
+    // prefer graceful shutdown on uncaught exception if possible
+    graceful("uncaughtException");
+  });
 }
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
-
-// --- Optional unhandled handlers (log only)
-process.on('unhandledRejection', (reason) => {
-  log('Unhandled Rejection:', reason && reason.stack ? reason.stack : reason);
-});
-process.on('uncaughtException', (err) => {
-  log('Uncaught Exception:', err && err.stack ? err.stack : err);
-});
+start();
