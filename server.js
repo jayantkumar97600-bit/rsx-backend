@@ -1,4 +1,4 @@
-// server.js (use this exact code — CommonJS style)
+// server.js (safe, guarded exits + heartbeat for debug)
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -12,8 +12,6 @@ const walletRoutes = require("./routes/wallet");
 const referralRoutes = require("./routes/referral");
 
 const app = express();
-
-// Body + CORS
 app.use(express.json());
 app.use(
   cors({
@@ -22,23 +20,41 @@ app.use(
   })
 );
 
-// --- fail-fast: ensure MONGO_URI exists in env ---
-const MONGO_URI = process.env.MONGO_URI;
-if (!MONGO_URI) {
-  console.error("FATAL: MONGO_URI is missing. Add MONGO_URI in env and restart.");
-  process.exit(1);
+// Helper: guarded exit so production doesn't auto-exit during debugging.
+// To allow real exits set env ALLOW_EXIT=1 (only for maintenance scripts).
+function guardedExit(code = 1) {
+  if (process.env.ALLOW_EXIT === "1") {
+    console.error("guardedExit: ALLOW_EXIT=1 -> exiting with", code);
+    process.exit(code);
+  } else {
+    console.error("guardedExit blocked exit (ALLOW_EXIT != 1). Code:", code);
+    // keep process alive for debugging — do not exit
+  }
 }
 
-// Mask print (safe)
-const masked = MONGO_URI.replace(/(\/\/.+?:).+?@/, "$1***@");
-console.log("Connecting to MongoDB (masked):", masked);
+// --- MONGO URI check ---
+const MONGO_URI = process.env.MONGO_URI;
+if (!MONGO_URI) {
+  console.error("FATAL: MONGO_URI is missing. Set MONGO_URI env var.");
+  // previously abrupt process.exit(1) was here — now guarded
+  guardedExit(1);
+}
 
+// Masked log for security
+try {
+  const masked = MONGO_URI.replace(/(\/\/.+?:).+?@/, "$1***@");
+  console.log("Connecting to MongoDB (masked):", masked);
+} catch (e) {
+  console.log("Connecting to MongoDB");
+}
+
+// Connect to MongoDB (no deprecated options)
 mongoose
-  .connect(MONGO_URI) // <-- no useNewUrlParser / useUnifiedTopology here
+  .connect(MONGO_URI)
   .then(() => console.log("✅ MongoDB Connected"))
   .catch((err) => {
     console.error("❌ MongoDB connection error:", err);
-    process.exit(1);
+    guardedExit(1);
   });
 
 // Basic health route
@@ -46,7 +62,7 @@ app.get("/api/health", (req, res) => {
   res.json({ ok: true, ts: Date.now() });
 });
 
-// Other API routes
+// Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/game", gameRoutes);
@@ -59,11 +75,17 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
 
-// Global error handlers (helpful logs)
+// Heartbeat (temporary) to make sure container remains alive and visible in logs.
+setInterval(() => {
+  console.log("🫀 Heartbeat: server alive at", new Date().toISOString());
+}, 30 * 1000);
+
+// Helpful global handlers (don't exit immediately — log and let guardedExit handle)
 process.on("unhandledRejection", (reason) => {
   console.error("Unhandled Rejection:", reason);
+  guardedExit(1);
 });
 process.on("uncaughtException", (err) => {
   console.error("Uncaught Exception:", err);
-  process.exit(1);
+  guardedExit(1);
 });
