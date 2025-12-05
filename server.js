@@ -14,6 +14,8 @@ function log(...args) { console.log(new Date().toISOString(), ...args); }
 
 // --- Routes (example)
 app.get('/', (req, res) => res.json({ message: 'API is running' }));
+app.get('/health', (req, res) => res.json({ ok: true }));
+
 
 // import your routes if present (make sure files exist)
 // const authRoutes = require('./routes/auth');
