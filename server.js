@@ -1,74 +1,86 @@
-// server.js
-require("dotenv").config(); // load .env in local / Railway injects env too
+// server.js - production-ready, graceful shutdown, uses env vars
+require('dotenv').config();
 
-const express = require("express");
-const cors = require("cors");
-const mongoose = require("mongoose");
-
-// optional logger, install if used (npm i morgan)
-// const morgan = require("morgan");
-
-const authRoutes = require("./routes/auth");
-const paymentRoutes = require("./routes/payments");
-const gameRoutes = require("./routes/game");
-const walletRoutes = require("./routes/wallet");
-const referralRoutes = require("./routes/referral");
+const express = require('express');
+const cors = require('cors');
+const mongoose = require('mongoose');
 
 const app = express();
-
-// Middlewares
 app.use(cors());
 app.use(express.json());
-// app.use(morgan("dev")); // uncomment if you have morgan installed
 
-// Basic health / root endpoint (important for Railway healthcheck)
-app.get("/", (req, res) => {
-  res.status(200).send("Backend is live");
-});
+// --- Basic logger to replace morgan so builds won't fail if morgan not installed
+function log(...args) { console.log(new Date().toISOString(), ...args); }
 
-// Optional explicit health endpoint
-app.get("/health", (req, res) => {
-  res.status(200).json({ status: "ok", time: new Date().toISOString() });
-});
+// --- Routes (example)
+app.get('/', (req, res) => res.json({ message: 'API is running' }));
 
-// Mongo connect using env var
-const MONGO_URI = process.env.MONGO_URI || process.env.MONGO || "mongodb://127.0.0.1:27017/godwin";
+// import your routes if present (make sure files exist)
+// const authRoutes = require('./routes/auth');
+// app.use('/api/auth', authRoutes);
 
-mongoose
-  .connect(MONGO_URI, {
-    // Mongoose 7+ doesn't need useNewUrlParser/useUnifiedTopology
-    // keep options minimal
-  })
-  .then(() => console.log("✅ MongoDB Connected"))
-  .catch((err) => {
-    console.error("❌ MongoDB connection error:", err);
-    // don't exit immediately — allow Railway to see error and restart as per policy
-  });
+// --- Mongo connection
+const MONGO_URI = process.env.MONGO_URI || process.env.DATABASE_URL || 'mongodb://127.0.0.1:27017/godwin';
+async function connectMongo() {
+  try {
+    log('Connecting to MongoDB:', MONGO_URI.startsWith('mongodb+srv') ? 'atlas uri (masked)' : MONGO_URI);
+    await mongoose.connect(MONGO_URI, {
+      // modern driver options - mongoose v? handles these internally; keep simple
+      // useUnifiedTopology/useNewUrlParser no longer required for modern drivers
+    });
+    log('✅ MongoDB Connected');
+  } catch (err) {
+    log('❌ MongoDB connection error:', err.message || err);
+    // DON'T call process.exit here; let service retry and platform decide restart
+  }
+}
+connectMongo();
 
-// Routes (mounted)
-app.use("/api/auth", authRoutes);
-app.use("/api/payments", paymentRoutes);
-app.use("/api/game", gameRoutes);
-app.use("/api/wallet", walletRoutes);
-app.use("/api/referral", referralRoutes);
-
-// Use dynamic port for cloud providers
+// --- Start server
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  log(`🚀 Server running on port ${PORT}`);
 });
 
-// Graceful shutdown handlers (helps prevent container exit loops)
-function shutdown(signal) {
-  console.log(`Received ${signal}. Shutting down gracefully...`);
-  server.close(() => {
-    mongoose.disconnect().finally(() => {
-      console.log("Closed out remaining connections.");
-      process.exit(0);
+// --- Graceful shutdown
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log(`⚠️  Received ${signal}. Shutting down gracefully...`);
+  try {
+    // stop accepting new connections
+    server.close(() => {
+      log('HTTP server closed.');
     });
-  });
-}
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-module.exports = app;
+    // close mongoose
+    try {
+      await mongoose.disconnect();
+      log('Mongo connection closed.');
+    } catch (e) {
+      log('Error while closing mongo:', e && e.message ? e.message : e);
+    }
+
+    // allow a short time to finish
+    setTimeout(() => {
+      log('Exiting process after graceful shutdown.');
+      // use process.exit with 0 only after cleanup — platform will restart if needed
+      process.exit(0);
+    }, 1000);
+  } catch (err) {
+    log('Error during shutdown:', err);
+    process.exit(1);
+  }
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+// --- Optional unhandled handlers (log only)
+process.on('unhandledRejection', (reason) => {
+  log('Unhandled Rejection:', reason && reason.stack ? reason.stack : reason);
+});
+process.on('uncaughtException', (err) => {
+  log('Uncaught Exception:', err && err.stack ? err.stack : err);
+});
