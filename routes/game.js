@@ -6,6 +6,7 @@ const Bet = require("../models/Bet");
 const RoundResult = require("../models/RoundResult");
 const User = require("../models/User");
 const GameConfig = require("../models/GameConfig");
+const { getBetLimits } = require("../config/betLimits");
 
 const router = express.Router();
 
@@ -268,6 +269,28 @@ router.post("/bet", authMiddleware, async (req, res) => {
 
     if (!parsedAmount || parsedAmount <= 0) {
       return res.status(400).json({ message: "Invalid bet amount" });
+    }
+
+    const { min, max } = getBetLimits(gameType);
+
+    if (parsedAmount < min) {
+      return res.status(400).json({
+        message: `Minimum bet is ₹${min}`,
+        min,
+        max,
+      });
+    }
+
+    if (parsedAmount > max) {
+      return res.status(400).json({
+        message: `Maximum bet is ₹${max}`,
+        min,
+        max,
+      });
+    }
+
+    if (!["color", "number", "size"].includes(betKind)) {
+      return res.status(400).json({ message: "Invalid bet kind" });
     }
 
     if (!["color", "number", "size"].includes(betKind)) {
