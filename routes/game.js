@@ -326,6 +326,10 @@ router.post("/bet", authMiddleware, async (req, res) => {
     user.balance -= parsedAmount;
     await user.save();
 
+    user.tradeVolumeSinceLastDeposit =
+      (user.tradeVolumeSinceLastDeposit || 0) + parsedAmount;
+    await user.save();
+
     const bet = await Bet.create({
       user: user._id,
       gameType,

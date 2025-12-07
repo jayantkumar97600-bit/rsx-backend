@@ -174,11 +174,12 @@ router.post("/deposit", authMiddleware, async (req, res) => {
 
     // 🔁 Turnover / rollover logic (agar use kar raha hai to):
     // New real deposit => trading volume reset karo aur required turnover set karo
+    // TURNOVER: required = deposit amount (1x)
     user.hasActiveDeposit = true;
+    user.pendingTurnover = amount;
     user.tradeVolumeSinceLastDeposit = 0;
-    // Example: 1x turnover rule -> jitna deposit, utna trade karna padega
-    user.pendingTurnover = parsedAmount;
     await user.save();
+
 
     return res.json({
       message: "Deposit request created. Wait for admin approval.",
@@ -295,9 +296,9 @@ router.post(
   d.user.balance += creditAmount;
 
   d.user.hasActiveDeposit = true;
-  d.user.pendingTurnover =
-    (d.user.pendingTurnover || 0) + creditAmount * 3; // 3x turnover
+  d.user.pendingTurnover = creditAmount; // bas is deposit ka 1x
   d.user.tradeVolumeSinceLastDeposit = 0;
+
 
   await d.user.save();
 
@@ -378,19 +379,27 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
     }
 
     // 🔁 TURNOVER CONDITION YAHI HAI
-    // jitna deposit hai (pendingTurnover), utna trade complete hona chahiye
     if (
       user.hasActiveDeposit &&
-      user.pendingTurnover > 0 &&
-      (user.tradeVolumeSinceLastDeposit || 0) < user.pendingTurnover
-    ) {
-      const remaining =
-        user.pendingTurnover - (user.tradeVolumeSinceLastDeposit || 0);
+    user.pendingTurnover > 0 &&
+    (user.tradeVolumeSinceLastDeposit || 0) < user.pendingTurnover
+  ) {
+    const remaining =
+      user.pendingTurnover - (user.tradeVolumeSinceLastDeposit || 0);
+    return res.status(400).json({
+      message: `Withdraw se pehle kam se kam ₹${remaining} ka aur game turnover complete karo.`,
+    });
+  }
 
-      return res.status(400).json({
-        message: `Withdraw se pehle kam se kam ₹${remaining} ka aur game turnover complete karo.`,
-      });
-    }
+  // 🟢 turnover completed — reset everything
+  user.hasActiveDeposit = false;
+  user.pendingTurnover = 0;
+  user.tradeVolumeSinceLastDeposit = 0;
+
+  // withdraw logic
+  user.balance -= amount;
+  await user.save();
+  return res.json({ message: "Withdraw request placed", balance: user.balance });
 
     // 💰 balance check
     if (user.balance < amt) {
