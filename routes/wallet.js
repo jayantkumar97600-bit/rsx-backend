@@ -347,7 +347,7 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Invalid amount" });
     }
 
-    // ✅ MINIMUM WITHDRAWAL RULE (ab 500)
+    // ✅ MINIMUM WITHDRAWAL RULE (₹500)
     if (amt < 500) {
       return res
         .status(400)
@@ -378,28 +378,19 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
       return res.status(403).json({ message: "User is blocked" });
     }
 
-    // 🔁 TURNOVER CONDITION YAHI HAI
+    // 🔁 TURNOVER CONDITION (jitna deposit, utna hi trade)
     if (
       user.hasActiveDeposit &&
-    user.pendingTurnover > 0 &&
-    (user.tradeVolumeSinceLastDeposit || 0) < user.pendingTurnover
-  ) {
-    const remaining =
-      user.pendingTurnover - (user.tradeVolumeSinceLastDeposit || 0);
-    return res.status(400).json({
-      message: `Withdraw se pehle kam se kam ₹${remaining} ka aur game turnover complete karo.`,
-    });
-  }
+      user.pendingTurnover > 0 &&
+      (user.tradeVolumeSinceLastDeposit || 0) < user.pendingTurnover
+    ) {
+      const remaining =
+        user.pendingTurnover - (user.tradeVolumeSinceLastDeposit || 0);
 
-  // 🟢 turnover completed — reset everything
-  user.hasActiveDeposit = false;
-  user.pendingTurnover = 0;
-  user.tradeVolumeSinceLastDeposit = 0;
-
-  // withdraw logic
-  user.balance -= amount;
-  await user.save();
-  return res.json({ message: "Withdraw request placed", balance: user.balance });
+      return res.status(400).json({
+        message: `Withdraw se pehle kam se kam ₹${remaining} ka aur game turnover complete karo.`,
+      });
+    }
 
     // 💰 balance check
     if (user.balance < amt) {
@@ -410,6 +401,12 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
 
     // 💸 Balance deduct
     user.balance -= amt;
+
+    // ✅ yahan turnover reset kar sakte hain (kyunki condition pass ho chuki)
+    user.hasActiveDeposit = false;
+    user.pendingTurnover = 0;
+    user.tradeVolumeSinceLastDeposit = 0;
+
     await user.save();
 
     // 🧾 withdrawal record create
@@ -444,6 +441,7 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 });
+
 
 
 /* ============================================================
