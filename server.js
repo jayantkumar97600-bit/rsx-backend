@@ -43,7 +43,7 @@ app.use("/api/referral", referralRoutes);
 // app.use(express.static(path.join(__dirname, "public")));
 // app.get("*", (req,res) => res.sendFile(path.join(__dirname,"public","index.html")));
 
-const PORT = Number(process.env.PORT || 5000);
+const PORT = Number(process.env.PORT || 8080);
 
 // MONGO URI from env (set this in Railway / host env vars)
 const MONGO_URI = process.env.MONGO_URI || process.env.DATABASE_URL || "mongodb://127.0.0.1:27017/rsxwingod";
