@@ -23,7 +23,6 @@ const walletRoutes = require("./routes/wallet");
 const referralRoutes = require("./routes/referral");
 const depositRoutes = require("./routes/deposit");
 
-
 const app = express();
 
 // Middleware
