@@ -21,6 +21,8 @@ const paymentRoutes = require("./routes/payments");
 const gameRoutes = require("./routes/game");
 const walletRoutes = require("./routes/wallet");
 const referralRoutes = require("./routes/referral");
+const depositRoutes = require("./routes/deposit");
+
 
 const app = express();
 
@@ -38,6 +40,8 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/game", gameRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/referral", referralRoutes);
+app.use("/api/deposit", depositRoutes);
+app.use("/uploads", express.static(path.join(__dirname, "public/uploads")));
 
 // If you later serve frontend from same server:
 // app.use(express.static(path.join(__dirname, "public")));
