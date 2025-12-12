@@ -24,6 +24,11 @@ const roundResultSchema = new mongoose.Schema(
       required: true,
     },
 
+    resultSize: {
+      type: String, // "SMALL" | "BIG"
+      required: true,
+    },
+
     forcedByAdmin: {
       type: Boolean,
       default: false,

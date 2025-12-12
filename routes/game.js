@@ -598,36 +598,37 @@ router.post("/settle", authMiddleware, async (req, res) => {
 
     // agar bets hi nahi hain, phir bhi result fix kar sakte ho, but user ke liye koi settlement nahi
     if (!bets.length) {
-      // result agar pehle se hai to use karo, warna simple random store kar do
-      let roundResult = await RoundResult.findOne({ gameType, period });
+  // Always generate & store round result for history
+  let roundResult = await RoundResult.findOne({ gameType, period });
 
-      if (!roundResult) {
-        const n = Math.floor(Math.random() * 10);
-        const c = colorFromNumber(n);
-        const sz = sizeFromNumber(n);
+  if (!roundResult) {
+    // Generate random result (same logic as all periods)
+    const n = Math.floor(Math.random() * 10);
+    const c = colorFromNumber(n);
+    const sz = sizeFromNumber(n);
 
-        roundResult = await RoundResult.findOneAndUpdate(
-          { gameType, period },
-          {
-            gameType,
-            period,
-            resultNumber: n,
-            resultColor: c,
-            resultSize: sz,
-            forcedByAdmin: false,
-          },
-          { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
-      }
+    roundResult = await RoundResult.findOneAndUpdate(
+      { gameType, period },
+      {
+        gameType,
+        period,
+        resultNumber: n,
+        resultColor: c,
+        resultSize: sz,
+        forcedByAdmin: false,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+  }
 
-      return res.json({
-        message: "No unsettled bets for this period.",
-        resultNumber: roundResult.resultNumber,
-        resultColor: roundResult.resultColor,
-        size: roundResult.resultSize,
-        hadBets: false,
-      });
-    }
+  return res.json({
+    message: "No unsettled bets for this period.",
+    resultNumber: roundResult.resultNumber,
+    resultColor: roundResult.resultColor,
+    size: roundResult.resultSize,
+    hadBets: false,
+  });
+}
 
     // Result: admin set → use that, otherwise risk engine se
     let roundResult = await RoundResult.findOne({ gameType, period });
