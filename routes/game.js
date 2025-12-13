@@ -634,9 +634,18 @@ router.post("/settle", authMiddleware, async (req, res) => {
     let roundResult = await RoundResult.findOne({ gameType, period });
 
     if (!roundResult) {
-      const n = await decideResultNumber({ user: _settleUser, bets });
+      let n;
+
+      // 🔥 70% pure random, 30% risk engine
+      if (Math.random() < 0.7) {
+        n = Math.floor(Math.random() * 10);
+      } else {
+         n = await decideResultNumber({ user: _settleUser, bets });
+      }
+
       const c = colorFromNumber(n);
       const sz = sizeFromNumber(n);
+
 
       try {
         roundResult = await RoundResult.findOneAndUpdate(
