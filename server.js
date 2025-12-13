@@ -114,7 +114,7 @@ function setupGracefulShutdown() {
 
 start();
 
-const cron = require("node-cron");
+
 const axios = require("axios");
 
 const GAME_TYPES = ["30s", "60s", "180s", "300s"];
