@@ -21,6 +21,12 @@ function authMiddleware(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.replace("Bearer ", "");
 
+  // ✅ INTERNAL CRON / SERVER TOKEN (AUTO SETTLE)
+  if (token === process.env.INTERNAL_CRON_TOKEN) {
+    req.user = { id: "CRON", role: "admin" };
+    return next();
+  }
+
   if (!token) return res.status(401).json({ message: "No token" });
 
   try {

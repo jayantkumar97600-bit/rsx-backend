@@ -114,63 +114,31 @@ function setupGracefulShutdown() {
 
 start();
 
-// ================= AUTO RESULT ENGINE =================
+const cron = require("node-cron");
+const axios = require("axios");
 
-const RoundResult = require("./models/RoundResult");
+const GAME_TYPES = ["30s", "60s", "180s", "300s"];
 
-function colorFromNumber(num) {
-  if (num === 0 || num === 5) return "V";
-  if (num % 2 === 1) return "R";
-  return "G";
-}
-
-function sizeFromNumber(num) {
-  return num <= 4 ? "SMALL" : "BIG";
-}
-
-function getSecondsForGameType(gameType) {
-  switch (gameType) {
-    case "30s": return 30;
-    case "60s": return 60;
-    case "180s": return 180;
-    case "300s": return 300;
-    default: return 30;
-  }
-}
-
-function getCurrentPeriod(gameType) {
-  const sec = getSecondsForGameType(gameType);
-  const now = Math.floor(Date.now() / 1000);
-  const index = Math.floor(now / sec);
-  return `${gameType}-${index}`;
-}
-
-// 🔥 AUTO RESULT GENERATOR
-setInterval(async () => {
+cron.schedule("*/10 * * * * *", async () => {
   try {
-    const gameTypes = ["30s", "60s", "180s", "300s"];
+    for (const gameType of GAME_TYPES) {
+      const periodRes = await axios.get(
+        `http://localhost:${PORT}/api/game/current?gameType=${gameType}`
+      );
 
-    for (const gameType of gameTypes) {
-      const period = getCurrentPeriod(gameType);
+      const period = periodRes.data.period;
 
-      const exists = await RoundResult.findOne({ gameType, period });
-      if (exists) continue;
-
-      const n = Math.floor(Math.random() * 10);
-
-      await RoundResult.create({
-        gameType,
-        period,
-        resultNumber: n,
-        resultColor: colorFromNumber(n),
-        resultSize: sizeFromNumber(n),
-        forcedByAdmin: false,
-      });
-
-      console.log(`✅ Auto result generated: ${gameType} ${period}`);
+      await axios.post(
+        `http://localhost:${PORT}/api/game/settle`,
+        { gameType, period },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.INTERNAL_CRON_TOKEN}`,
+          },
+        }
+      );
     }
-  } catch (err) {
-    console.error("❌ Auto result error:", err.message);
+  } catch (e) {
+    console.log("cron settle error:", e.message);
   }
-}, 1000);
-
+});
