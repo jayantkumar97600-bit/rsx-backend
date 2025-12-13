@@ -599,27 +599,36 @@ router.post("/settle", authMiddleware, async (req, res) => {
     // agar bets hi nahi hain, phir bhi result fix kar sakte ho, but user ke liye koi settlement nahi
     if (!bets.length) {
   // Always generate & store round result for history
-  let roundResult = await RoundResult.findOne({ gameType, period });
+  let roundResult = await RoundResult.findOne({
+  gameType,
+  period,
+  forcedByAdmin: true
+});
+
 
   if (!roundResult) {
-    // Generate random result (same logic as all periods)
-    const n = Math.floor(Math.random() * 10);
-    const c = colorFromNumber(n);
-    const sz = sizeFromNumber(n);
+  let n;
 
-    roundResult = await RoundResult.findOneAndUpdate(
-      { gameType, period },
-      {
-        gameType,
-        period,
-        resultNumber: n,
-        resultColor: c,
-        resultSize: sz,
-        forcedByAdmin: false,
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-  }
+  // ✅ real randomness
+  n = Math.floor(Math.random() * 10);
+
+  const c = colorFromNumber(n);
+  const sz = sizeFromNumber(n);
+
+  roundResult = await RoundResult.findOneAndUpdate(
+    { gameType, period },
+    {
+      gameType,
+      period,
+      resultNumber: n,
+      resultColor: c,
+      resultSize: sz,
+      forcedByAdmin: false,
+    },
+    { upsert: true, new: true }
+  );
+}
+
 
   return res.json({
     message: "No unsettled bets for this period.",
