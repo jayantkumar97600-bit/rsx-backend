@@ -255,6 +255,48 @@ router.get("/results", authMiddleware, async (req, res) => {
   }
 });
 
+
+
+
+// USER TRADE HISTORY
+// GET /api/game/my-trades?gameType=30s&limit=50
+router.get("/my-trades", authMiddleware, async (req, res) => {
+  try {
+    const { gameType = "30s", limit = 50 } = req.query;
+
+    const trades = await Bet.find({
+      user: req.user.id,
+      gameType,
+    })
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Number(limit) || 50, 100));
+
+    return res.json(
+      trades.map((b) => ({
+        period: b.period,
+        betKind: b.betKind,
+        betValue: b.betValue,
+        amount: b.amount,
+        win: b.win,
+        profit: b.profit,
+        resultNumber: b.resultNumber,
+        resultColor: b.resultColor,
+        resultSize: b.resultSize,
+        createdAt: b.createdAt,
+      }))
+    );
+  } catch (err) {
+    console.error("Trade history error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+
+
+
+
+
 /* ============================================================
    PLACE BET
    POST /api/game/bet
